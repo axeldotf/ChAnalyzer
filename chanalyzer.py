@@ -24,45 +24,98 @@ def map_operator_technology(value):
             return val
     return ('Unknown', 'Unknown')
 
-def apply_conditional_formatting(writer, sheet_name, df):
+def add_legend_to_summary_sheet(writer, sheet_name, row_offset=2):
     workbook = writer.book
     worksheet = writer.sheets[sheet_name]
     
-    format_green = workbook.add_format({'bg_color': '#99FF99', 'border': 1})  # Verde chiaro
-    format_yellow = workbook.add_format({'bg_color': '#FFFF99', 'border': 1})  # Giallo tenue
-    format_red = workbook.add_format({'bg_color': '#FFCCCC', 'border': 1})  # Rosso chiaro
-    format_gray = workbook.add_format({'bg_color': '#BFBFBF', 'border': 1})  # Grigio per valori assenti o zero
-    format_double_border = workbook.add_format({'top': 2})  # Bordo doppio superiore
+    legend_start_row = row_offset
+    legend_start_col = 8  # Posizionata fuori dalla tabella dati
     
+    header_format = workbook.add_format({'bold': True, 'align': 'center', 'bg_color': '#D9E1F2', 'border': 1})
+    cell_format = workbook.add_format({'align': 'center', 'border': 1})
+    color_formats = {
+        'Verde': workbook.add_format({'bg_color': '#99FF99', 'border': 1, 'align': 'center'}),
+        'Giallo': workbook.add_format({'bg_color': '#FFFF99', 'border': 1, 'align': 'center'}),
+        'Rosso': workbook.add_format({'bg_color': '#FFCCCC', 'border': 1, 'align': 'center'}),
+        'Grigio': workbook.add_format({'bg_color': '#BFBFBF', 'border': 1, 'align': 'center'})
+    }
+    
+    worksheet.merge_range(legend_start_row, legend_start_col, legend_start_row, legend_start_col + 3, "Legenda Copertura", header_format)
+    worksheet.write(legend_start_row + 1, legend_start_col, "Colore", header_format)
+    worksheet.write(legend_start_row + 1, legend_start_col + 1, "Intervallo 2G", header_format)
+    worksheet.write(legend_start_row + 1, legend_start_col + 2, "Intervallo 3G", header_format)
+    worksheet.write(legend_start_row + 1, legend_start_col + 3, "Intervallo 4G", header_format)
+    
+    legend_data = [
+        ("Verde", " > -80 dBm", " > -85 dBm", " > -95 dBm"),
+        ("Giallo", "-80 ÷ -90 dBm", "-85 ÷ -95 dBm", "-95 ÷ -105 dBm"),
+        ("Rosso", "< -90 dBm", "< -95 dBm", "< -105 dBm"),
+        ("Grigio", "Assente", "Assente", "Assente")
+    ]
+    
+    max_widths = [max(len(row[i]) for row in legend_data) for i in range(4)]
+    
+    for i, (color, val_2g, val_3g, val_4g) in enumerate(legend_data):
+        row = legend_start_row + 2 + i
+        worksheet.write(row, legend_start_col, color, color_formats[color])
+        worksheet.write(row, legend_start_col + 1, val_2g, cell_format)
+        worksheet.write(row, legend_start_col + 2, val_3g, cell_format)
+        worksheet.write(row, legend_start_col + 3, val_4g, cell_format)
+    
+    for i, width in enumerate(max_widths):
+        worksheet.set_column(legend_start_col + i, legend_start_col + i, width + 2)
+
+def apply_conditional_formatting(writer, sheet_name, df):
+    workbook = writer.book
+    worksheet = writer.sheets[sheet_name]
+
+    format_green = workbook.add_format({'bg_color': '#99FF99', 'border': 1})
+    format_yellow = workbook.add_format({'bg_color': '#FFFF99', 'border': 1})
+    format_red = workbook.add_format({'bg_color': '#FFCCCC', 'border': 1})
+    format_gray = workbook.add_format({'bg_color': '#BFBFBF', 'border': 1})
+    format_double_border = workbook.add_format({'top': 2})
+
     num_rows = len(df)
     num_cols = len(df.columns)
     
-    for col_idx in range(num_cols):  # Adatta la larghezza in base alla prima riga
-        col_letter = chr(65 + col_idx)
+    for col_idx in range(num_cols):
         max_length = max(df.iloc[:, col_idx].astype(str).apply(len).max(), len(df.columns[col_idx]))
-        worksheet.set_column(f'{col_letter}:{col_letter}', max_length + 2)
-    
-    for col_idx in range(3, num_cols):  # Partiamo dalla quarta colonna (misure)
+        worksheet.set_column(col_idx, col_idx, max_length + 2)
+
+    for col_idx in range(3, num_cols):
         col_letter = chr(65 + col_idx)
         
-        worksheet.conditional_format(f'{col_letter}2:{col_letter}{num_rows+1}', 
-                                     {'type': 'cell', 'criteria': 'between', 'minimum': -90, 'maximum': -1, 'format': format_green})
-        worksheet.conditional_format(f'{col_letter}2:{col_letter}{num_rows+1}', 
-                                     {'type': 'cell', 'criteria': 'between', 'minimum': -90, 'maximum': -80, 'format': format_yellow})
-        worksheet.conditional_format(f'{col_letter}2:{col_letter}{num_rows+1}', 
-                                     {'type': 'cell', 'criteria': 'less than', 'value': -90, 'format': format_red})
-        worksheet.conditional_format(f'{col_letter}2:{col_letter}{num_rows+1}', 
-                                     {'type': 'cell', 'criteria': 'equal to', 'value': 0, 'format': format_gray})
-        worksheet.conditional_format(f'{col_letter}2:{col_letter}{num_rows+1}', 
-                                     {'type': 'blanks', 'format': format_gray})
+        for row in range(2, num_rows + 2):
+            technology = df.iloc[row - 2]['Tecnologia']
+            
+            if 'G' in technology:
+                green_min, yellow_min, red_max = -80, -90, -90
+            elif 'U' in technology:
+                green_min, yellow_min, red_max = -85, -95, -95
+            elif 'L' in technology:
+                green_min, yellow_min, red_max = -95, -105, -105
+            else:
+                continue
+
+            worksheet.conditional_format(f'{col_letter}{row}:{col_letter}{row}',
+                                         {'type': 'cell', 'criteria': 'between', 'minimum': green_min, 'maximum': -2, 'format': format_green})
+            worksheet.conditional_format(f'{col_letter}{row}:{col_letter}{row}',
+                                         {'type': 'cell', 'criteria': 'between', 'minimum': yellow_min, 'maximum': green_min, 'format': format_yellow})
+            worksheet.conditional_format(f'{col_letter}{row}:{col_letter}{row}',
+                                         {'type': 'cell', 'criteria': 'less than', 'value': red_max, 'format': format_red})
+            worksheet.conditional_format(f'{col_letter}{row}:{col_letter}{row}',
+                                         {'type': 'cell', 'criteria': 'between', 'minimum': -1, 'maximum': 1, 'format': format_gray})
+            worksheet.conditional_format(f'{col_letter}{row}:{col_letter}{row}',
+                                         {'type': 'blanks', 'format': format_gray})
     
-    # Aggiunta di bordi doppi superiori per separare i piani
     prev_area = None
     for row in range(1, num_rows + 1):
         current_area = df.iloc[row - 1]['Area Misurata'] if 'Area Misurata' in df.columns else None
         if prev_area is not None and current_area != prev_area:
-            worksheet.set_row(row, None, format_double_border)
+            worksheet.set_row(row, None, format_double_border, {'first': 0, 'last': 6})
         prev_area = current_area
+
+    add_legend_to_summary_sheet(writer, sheet_name)
 
 def process_excel_files():
     required_technologies = ['G900', 'L800', 'L1800', 'U900', 'U2100', 'L2100', 'L2600']
