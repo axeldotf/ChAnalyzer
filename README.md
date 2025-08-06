@@ -71,4 +71,5 @@ Al termine della procedura, nella cartella `dist` troverai `chanalyzer.exe` pron
 ### ✍️ Autore
 
 Sviluppato da **Alessandro Frullo**
+
 In collaborazione con **Selektra Italia Srl**
